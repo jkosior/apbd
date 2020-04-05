@@ -1,0 +1,10 @@
+version: "3"
+
+services:
+  db:
+    image: "microsoft/mssql-server-linux"
+    container_name: "db"
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: "EXPRESS"
+      SA_PASSWORD: "DATABASE_PASSWORD"

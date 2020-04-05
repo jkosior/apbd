@@ -1,9 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Http;
 using zadanie2.Models;
 using zadanie2.DAL;
 
@@ -27,15 +23,13 @@ namespace zadanie2.Controllers
             return Ok(_dbService.GetStudents());
         }
 
-        [HttpGet("{id}")]
-        public IActionResult GetOneStudent(int id)
+        [HttpGet("{index}")]
+        public IActionResult GetOneStudent(string index)
         {
-            if (id == 1)
+            var student = _dbService.GetStudent(index);
+            if (student != null)
             {
-                return Ok("Kowalski");
-            } else if (id == 2)
-            {
-                return Ok("Malewski");
+                return Ok(student);
             }
             return NotFound("Student not found");
         }
