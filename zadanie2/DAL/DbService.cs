@@ -1,26 +1,27 @@
 ﻿using System;
-using System.Data.SqlClient;
 using System.Collections.Generic;
-using zadanie2.Models;
+using System.Data;
+using System.Data.SqlClient;
+using System.Linq;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using zadanie2.Dtos;
+using zadanie2.Models;
 
 namespace zadanie2.DAL
 {
-    public class DbService: IDbService
+    public class DbService : IDbService
     {
         private const string ProcedureName = "Promotions";
-        private readonly IConfiguration _config;
+        private readonly IConfiguration _configuration;
+        private readonly StudentsContext _context;
 
-        public DbService(IConfiguration config)
+        public DbService(IConfiguration configuration, StudentsContext context)
         {
-            _config = config;
+            _configuration = configuration;
+            _context = context;
 
-
-            using var client = new SqlConnection(_config["ConnectionString"]);
-            client.Open();
-
-            using var command = new SqlCommand($@"
+            _context.Database.ExecuteSqlRaw(@"
 CREATE OR ALTER PROCEDURE {ProcedureName}
     @StudiesId INT,
     @Semester INT
@@ -35,161 +36,84 @@ AS BEGIN
 	UPDATE Student SET IdEnrollment = @NextEnrollmentId
 	WHERE IdEnrollment = (SELECT TOP 1 IdEnrollment FROM [Enrollment] WHERE [IdStudy] = @StudiesId AND Semester = @Semester);
 END
-", client);
-            command.ExecuteNonQuery();
-            client.Close();
+");
         }
 
-        public IEnumerable<Student> GetStudents()
+        public IEnumerable<StudentDto> GetStudents()
         {
-            using var client = new SqlConnection(_config["ConnectionString"]);
-            client.Open();
-            using var com = new SqlCommand(@"
-SELECT
-[s].[FirstName],
-[s].[LastName],
-[s].[BirthDate],
-[s].[IndexNumber],
-[e].[Semester],
-[st].[Name] AS [StudyName]
-FROM [Student] [s]
-INNER JOIN [Enrollment] [e] ON [s].[IdEnrollment] = [e].[IdEnrollment]
-INNER JOIN [Studies] [st] ON [st].[IdStudy] = [e].[IdStudy];
-", client);
-
-            var dr = com.ExecuteReader();
-
-            while (dr.Read())
-            {
-                yield return new Student
+            return _context
+                .Students
+                .Include(s => s.Enrollment)
+                .ThenInclude(s => s.Study)
+                .Select(s => new StudentDto()
                 {
-                    IndexNumber = dr["IndexNumber"].ToString(),
-                    FirstName = dr["FirstName"].ToString(),
-                    LastName = dr["LastName"].ToString(),
-                    BirthDate = DateTime.Parse(dr["LastName"].ToString()),
-                    Semester = dr["Semester"].ToString(),
-                    StudyName = dr["StudyName"].ToString()
-                };
-            }
-
-            client.Close();
+                    IndexNumber = s.IndexNumber,
+                    FirstName = s.FirstName,
+                    LastName = s.LastName,
+                    BirthDate = s.BirthDate.ToString(),        
+                    Study = s.Enrollment.Study.Name
+                });
         }
 
-        public IEnumerable<Student> GetStudent(string index)
+        public IEnumerable<StudentDto> GetStudent(string indexNumber)
         {
-            using var client = new SqlConnection(_config["ConnectionString"]);
-            client.Open();
-            using var com = new SqlCommand(@"
-SELECT
-[s].[FirstName],
-[s].[LastName],
-[s].[BirthDate],
-[s].[IndexNumber],
-[e].[Semester],
-[st].[Name] AS [StudyName]
-FROM [Student] [s]
-INNER JOIN [Enrollment] [e] ON [s].[IdEnrollment] = [e].[IdEnrollment]
-INNER JOIN [Studies] [st] ON [st].[IdStudy] = [e].[IdStudy]
-WHERE [s].[IndexNumber] = @index
-", client); 
-
-            com.Parameters.Add(new SqlParameter("index", index));
-            var dr = com.ExecuteReader();
-            while(dr.Read())
-            {
-                yield return new Student
+            return _context
+                .Students
+                .Include(s => s.Enrollment)
+                .ThenInclude(s => s.Study)
+                .Where(s => s.IndexNumber == indexNumber)
+                .Select(s => new StudentDto()
                 {
-                    IndexNumber = dr["IndexNumber"].ToString(),
-                    FirstName = dr["FirstName"].ToString(),
-                    LastName = dr["LastName"].ToString(),
-                    BirthDate = DateTime.Parse(dr["LastName"].ToString()),
-                    Semester = dr["Semester"].ToString(),
-                    StudyName = dr["StudyName"].ToString()
-                };
-            }
-            client.Close();
+                    IndexNumber = s.IndexNumber,
+                    FirstName = s.FirstName,
+                    LastName = s.LastName,
+                    BirthDate = s.BirthDate.ToString(),
+                    Study = s.Enrollment.Study.Name
+                });
         }
 
         public int? GetStudiesIdByName(string name)
         {
-            using var client = new SqlConnection(_config["ConnectionString"]);
-            client.Open();
-            using var command = new SqlCommand(@"SELECT TOP 1 [IdStudy] FROM [Studies] WHERE [Name] = @Name;", client);
-            command.Parameters.Add(new SqlParameter("Name", name));
-
-            var result = (int?)command.ExecuteScalar();
-
-            client.Close();
-
-            return result;
+            return _context.Studies.Where(s => s.Name == name).Select(s => s.IdStudy).FirstOrDefault();
         }
 
         public bool IsIndexNumberUnique(string indexNumber)
         {
-            using var client = new SqlConnection(_config["ConnectionString"]);
-            client.Open();
-
-            using var command =
-                new SqlCommand(
-                    @"SELECT 1 FROM [Student] WHERE [IndexNumber] = @IndexNumber",
-                    client);
-            command.Parameters.Add(new SqlParameter("IndexNumber", indexNumber));
-            var result = Convert.ToBoolean(command.ExecuteScalar());
-
-            client.Close();
-            return !result;
+            return !_context
+                .Students
+                .Any(s => s.IndexNumber == indexNumber);
         }
 
         public int? GetEnrollmentByStudyIdAndSemester(int studyId, int semester)
         {
-            using var client = new SqlConnection(_config["ConnectionString"]);
-            client.Open();
-
-            try
-            {
-                using var command =
-                    new SqlCommand(
-                        @"SELECT TOP 1 [IdEnrollment] FROM [Enrollment] WHERE [IdStudy] = @StudyId AND [Semester] = @Semester;",
-                        client);
-                command.Parameters.AddRange(new[]
-                {
-                    new SqlParameter("StudyId", studyId),
-                    new SqlParameter("Semester", semester),
-                });
-
-                return (int?)command.ExecuteScalar();
-            }
-            finally
-            {
-                client.Close();
-            }
+            return _context
+                .Enrollments
+                .Where(e => e.IdStudy == studyId && e.Semester == semester)
+                .Select(e => e.IdEnrollment)
+                .FirstOrDefault();
         }
 
-        public void CreateStudent(StudentCreateDto dto, int studiesId)
+        public void CreateStudent(StudentDto dto, int studiesId)
         {
-            using var client = new SqlConnection(_config["ConnectionString"]);
-            client.Open();
-            using var transaction = client.BeginTransaction();
+            using var transaction = _context.Database.BeginTransaction();
+
             try
             {
                 var enrollmentId = GetEnrollmentByStudyIdAndSemester(studiesId, 1);
 
                 if (!enrollmentId.HasValue)
                 {
-                    using var commandFindLatestId =
-                        new SqlCommand("SELECT MAX([IdEnrollment]) FROM [Enrollment];", client, transaction);
-                    var latestId = (int)commandFindLatestId.ExecuteScalar();
+                    var latest = _context.Enrollments.Max(e => e.IdEnrollment);
 
-                    using var createEnrollmentCommand = new SqlCommand(@"
-                        INSERT INTO [Enrollment](IdEnrollment, Semester, IdStudy, StartDate)
-                        VALUES (@Id, 1, @IdStudy, GETDATE());
-                    ", client, transaction);
-                    createEnrollmentCommand.Parameters.Add(new SqlParameter("Id", latestId + 1));
-                    createEnrollmentCommand.Parameters.Add(new SqlParameter("IdStudy", studiesId));
+                    _context.Enrollments.Add(new Enrollment
+                    {
+                        IdEnrollment = latest + 1,
+                        Semester = 1,
+                        IdStudy = studiesId,
+                        StartDate = DateTime.Now
+                    });
 
-                    createEnrollmentCommand.ExecuteNonQuery();
-
-                    enrollmentId = latestId + 1;
+                    enrollmentId = latest + 1;
                 }
 
                 var dateSplitted = dto.BirthDate.Split('.');
@@ -198,48 +122,34 @@ WHERE [s].[IndexNumber] = @index
                 var year = int.Parse(dateSplitted[2]);
                 var parsedDate = new DateTime(year, month, day);
 
-                using var commandCreateStudent =
-                    new SqlCommand(@"
-                    INSERT INTO [Student]([IndexNumber],[FirstName],[LastName],[BirthDate],[IdEnrollment])
-                    VALUES (@IndexNumber, @FirstName, @LastName, @BirthDate, @EnrolId);
-                    ", client, transaction);
-                commandCreateStudent.Parameters.AddRange(new[]
+                _context.Students.Add(new Student()
                 {
-                    new SqlParameter("@IndexNumber", dto.IndexNumber),
-                    new SqlParameter("@FirstName", dto.FirstName),
-                    new SqlParameter("@LastName", dto.LastName),
-                    new SqlParameter("@BirthDate", parsedDate),
-                    new SqlParameter("@EnrolId", enrollmentId)
+                    IndexNumber = dto.IndexNumber,
+                    FirstName = dto.FirstName,
+                    LastName = dto.LastName,
+                    BirthDate = parsedDate,
+                    IdEnrollment = enrollmentId.Value
                 });
 
-                commandCreateStudent.ExecuteNonQuery();
-
+                _context.SaveChanges();
                 transaction.Commit();
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 transaction.Rollback();
-            }
-            finally
-            {
-                client.Close();
             }
         }
 
         public void PromoteStudents(int studiesId, int semester)
         {
-            using var client = new SqlConnection(_config["ConnectionString"]);
-            client.Open();
-            using var command = new SqlCommand(ProcedureName, client) { CommandType = CommandType.StoredProcedure };
-            command.Parameters.AddRange(new[]
-            {
-                new SqlParameter("StudiesId", studiesId),
-                new SqlParameter("Semester", semester)
-            });
+            var connection = _context.Database.GetDbConnection();
+            var command = connection.CreateCommand();
+            command.CommandType = CommandType.StoredProcedure;
+            command.CommandText = ProcedureName;
+            command.Parameters.Add(new SqlParameter("@StudiesId", studiesId));
+            command.Parameters.Add(new SqlParameter("@Semester", semester));
 
             command.ExecuteNonQuery();
-
-            client.Close();
         }
     }
 }

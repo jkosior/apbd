@@ -2,6 +2,8 @@
 using Microsoft.AspNetCore.Mvc;
 using zadanie2.Models;
 using zadanie2.DAL;
+using zadanie2.Dtos;
+
 
 namespace zadanie2.Controllers
 {   
@@ -10,10 +12,12 @@ namespace zadanie2.Controllers
     public class StudentsController : ControllerBase
     {
         private readonly IDbService _dbService;
+        private readonly StudentsContext _context;
 
-        public StudentsController(IDbService dbService)
+        public StudentsController(IDbService dbService, StudentContext context)
         {
             _dbService = dbService;
+            _context = context
         }
 
 
@@ -41,17 +45,38 @@ namespace zadanie2.Controllers
             return Ok(student);
         }
 
-        [HttpPut("{id}")]
-        public IActionResult UpdateStudent(int id, Student student)
+        [HttpPut]
+        public IActionResult UpdateStudent([FromBody] StudentDto studentDto)
         {
-            return Ok("Update complete");
+            var student = _context.Students.SingleOrDefault(s => s.IndexNumber == studentDto.IndexNumber);
+            if (student == null) return BadRequest("Nie znaleziono studneta");
+
+            student.BirthDate = studentDto.BirthDate;
+            student.IdEnrollment = _context
+                .Enrollments
+                .Where(e => e.Study.Name == studentDto.StudyName && e.Semester == studentDto.Semester)
+                .Select(e => e.IdEnrollment)
+                .Single();
+            student.FirstName = studentDto.FirstName;
+            student.LastName = studentDto.LastName;
+
+            _context.SaveChanges();
+
+            return Ok(student);
         }
 
-        [HttpDelete("{id}")]
-        public IActionResult DeleteStudent(int id)
+        [HttpDelete("{indexNumber}")]
+        public IActionResult DeleteStudent(string indexNumber)
         {
-            return Ok("Delete complete");
+            var student = _context.Students.SingleOrDefault(s => s.IndexNumber == indexNumber);
+            if (student == null) return BadRequest("Nie znaleziono studenta");
+
+            _context.Students.Remove(student);
+
+            _context.SaveChanges();
+
+            return Ok("Usuwanie ukończone");
         }
-        
+
     }
 }

@@ -1,46 +1,62 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
+﻿using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Mvc;
-
-// For more information on enabling Web API for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
+using zadanie2.DAL;
+using zadanie2.Dtos;
 
 namespace zadanie2.Controllers
 {
-    [Route("api/[controller]")]
-    public class EnrollmentController : Controller
+    [ApiController]
+    [Route("api/enrollments")]
+    public class EnrollmentController : ControllerBase
     {
-        // GET: api/values
-        [HttpGet]
-        public IEnumerable<string> Get()
+        private readonly IDbService _dbService;
+
+        public EnrollmentController(IDbService dbService)
         {
-            return new string[] { "value1", "value2" };
+            _dbService = dbService;
         }
 
-        // GET api/values/5
-        [HttpGet("{id}")]
-        public string Get(int id)
-        {
-            return "value";
-        }
-
-        // POST api/values
         [HttpPost]
-        public void Post([FromBody]string value)
+        public IActionResult Post(StudentDto dto)
         {
+            if (string.IsNullOrWhiteSpace(dto.IndexNumber)
+                || string.IsNullOrWhiteSpace(dto.FirstName)
+                || string.IsNullOrWhiteSpace(dto.LastName)
+                || string.IsNullOrWhiteSpace(dto.BirthDate)
+                || !new Regex("^\\d{1,2}\\.\\d{1,2}\\.\\d{4}$").IsMatch(dto.BirthDate))
+            {
+                return BadRequest("Format danych jest nieprawidłowy");
+            }
+
+            var studiesId = _dbService.GetStudiesIdByName(dto.Study);
+
+            if (!studiesId.HasValue)
+            {
+                return BadRequest($"Nie znaleziono studiów o nazwie = {dto.Study}");
+            }
+
+            if (!_dbService.IsIndexNumberUnique(dto.IndexNumber))
+            {
+                return BadRequest("Student o podanym id już istnieje");
+            }
+
+            _dbService.CreateStudent(dto, studiesId.Value);
+
+            return Created("", "");
         }
 
-        // PUT api/values/5
-        [HttpPut("{id}")]
-        public void Put(int id, [FromBody]string value)
+        [HttpPost("promotions")]
+        public IActionResult Promotions(PromotionDto dto)
         {
-        }
+            var studyId = _dbService.GetStudiesIdByName(dto.Studies);
+            if (!studyId.HasValue) return NotFound();
 
-        // DELETE api/values/5
-        [HttpDelete("{id}")]
-        public void Delete(int id)
-        {
+            var enrollmentId = _dbService.GetEnrollmentByStudyIdAndSemester(studyId.Value, dto.Semester);
+            if (!enrollmentId.HasValue) return NotFound();
+
+            _dbService.PromoteStudents(studyId.Value, dto.Semester);
+
+            return Created("", "");
         }
     }
 }

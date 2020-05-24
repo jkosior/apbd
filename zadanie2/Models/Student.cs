@@ -1,14 +1,24 @@
 ﻿using System;
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+
 namespace zadanie2.Models
 {
+    [Table("Student")]
     public class Student
     {
-        public int StudentId { get; set; }
-        public string FirstName { get; set; }
-        public string LastName { get; set; }
+        [Key]
         public string IndexNumber { get; set; }
+
+        public string FirstName { get; set; }
+
+        public string LastName { get; set; }
+
         public DateTime BirthDate { get; set; }
-        public string Semester { get; set; }
-        public string StudyName { get; set; }
+
+        [ForeignKey(nameof(Enrollment))]
+        public int IdEnrollment { get; set; }
+
+        public Enrollment Enrollment { get; set; }
     }
 }

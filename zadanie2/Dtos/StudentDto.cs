@@ -1,6 +1,6 @@
 ﻿namespace zadanie2.Dtos
 {   
-     public class StudentCreateDto
+     public class StudentDto
      {
             public string IndexNumber { get; set; }
 
@@ -10,7 +10,7 @@
 
             public string BirthDate { get; set; }
 
-            public string Studies { get; set; }
+            public string Study { get; set; }
      }
     
 }
